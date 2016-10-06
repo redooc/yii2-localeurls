@@ -40,7 +40,10 @@ class UrlManager extends BaseUrlManager
      * any request to `/some/page` will be redirected to `/fr/some/page`.
      *
      */
-    public $enableDefaultLanguageUrlCode = false;
+    public $enableDefaultLanguageUrlCodeReal = false;
+
+
+    public $enableDefaultLanguageUrlCodeCallBack = null;
 
     /**
      * @var bool whether to detect the app language from the HTTP headers (i.e. browser settings).
@@ -138,6 +141,8 @@ class UrlManager extends BaseUrlManager
             }
         }
         $this->_defaultLanguage = Yii::$app->language;
+
+
         parent::init();
     }
 
@@ -155,6 +160,7 @@ class UrlManager extends BaseUrlManager
      */
     public function parseRequest($request)
     {
+
         if ($this->enableLocaleUrls && $this->languages) {
             $process = true;
             if ($this->ignoreLanguageUrlPatterns) {
@@ -201,20 +207,55 @@ class UrlManager extends BaseUrlManager
                 $languageRequired = false;
             }
 
+
             // Do not use prefix for default language to prevent unnecessary redirect if there's no persistence and no detection
             if (
                 $languageRequired && $language===$this->getDefaultLanguage() &&
-                !$this->enableDefaultLanguageUrlCode && !$this->enableLanguagePersistence && !$this->enableLanguageDetection
+                !$this->getEnableDefaultLanguageUrlCode($params) &&
+                !$this->enableLanguagePersistence &&
+                !$this->enableLanguageDetection
             ) {
                 $languageRequired = false;
             }
 
+//            if(is_callable($this->enableDefaultLanguageUrlCodeCallBack)) {
+//                $languageRequired = ($this->enableDefaultLanguageUrlCodeCallBack)($params);
+////                $_call = $this->enableDefaultLanguageUrlCodeCallBack;
+////                $languageRequired = $_call($params);
+//            }
+
             $url = parent::createUrl($params);
 
+//            $c1= $language===$this->getDefaultLanguage();
+//            $c2 = (!$languageRequired);
+
+
+            $c3 = (!$this->enableDefaultLanguageUrlCodeReal);
+            $c4 = ($this->enableDefaultLanguageUrlCodeCallBack)($params);
+
+
+            $c5=(!$this->enableDefaultLanguageUrlCodeReal || ($this->enableDefaultLanguageUrlCodeCallBack)($params) );
+            $c6 = (!$languageRequired &&
+                (!$this->enableDefaultLanguageUrlCodeReal || ($this->enableDefaultLanguageUrlCodeCallBack)($params) )&&
+                $language===$this->getDefaultLanguage());
+            $c7 = (!$languageRequired &&
+                (!$this->enableDefaultLanguageUrlCodeReal  )&&
+                $language===$this->getDefaultLanguage());
+
+            $c8 = (!$languageRequired &&
+                (! ($this->enableDefaultLanguageUrlCodeReal && ($this->enableDefaultLanguageUrlCodeCallBack)($params)) )&&
+
+                $language===$this->getDefaultLanguage());
+
+
+            $cnotAnd = (! ($this->enableDefaultLanguageUrlCodeReal && ($this->enableDefaultLanguageUrlCodeCallBack)($params)));
+            $cnotOr = ( (!$this->enableDefaultLanguageUrlCodeReal || ($this->enableDefaultLanguageUrlCodeCallBack)($params)));
+            $cnotOrnot = ( (!$this->enableDefaultLanguageUrlCodeReal || !($this->enableDefaultLanguageUrlCodeCallBack)($params)));
+            $cnotAndnot = ( (!$this->enableDefaultLanguageUrlCodeReal) && (!($this->enableDefaultLanguageUrlCodeCallBack)($params) ) );
             // Unless a language was explicitely specified in the parameters we can return a URL without any prefix
             // for the default language, if suffixes are disabled for the default language. In any other case we
             // always add the suffix, e.g. to create "reset" URLs that explicitely contain the default language.
-            if (!$languageRequired && !$this->enableDefaultLanguageUrlCode && $language===$this->getDefaultLanguage()) {
+            if (!$languageRequired && !$this->getEnableDefaultLanguageUrlCode($params) && $language===$this->getDefaultLanguage()) {
                 return  $url;
             } else {
                 $key = array_search($language, $this->languages);
@@ -247,10 +288,15 @@ class UrlManager extends BaseUrlManager
                     }
                 }
                 $needleLength = strlen($needle);
-                return $needleLength ? substr_replace($url, "$needle/$language", 0, $needleLength) : "/$language$url";
+                $rv =  $needleLength ? substr_replace($url, "$needle/$language", 0, $needleLength) : "/$language$url";
+                if($rv == '/it'){
+                    $rv.="#azz";
+                }
+                return $rv;
             }
         } else {
-            return parent::createUrl($params);
+            $rv = parent::createUrl($params);
+            return $rv;
         }
     }
 
@@ -319,7 +365,7 @@ class UrlManager extends BaseUrlManager
 
             // "Reset" case: We called e.g. /fr/demo/page so the persisted language was set back to "fr".
             // Now we can redirect to the URL without language prefix, if default prefixes are disabled.
-            if (!$this->enableDefaultLanguageUrlCode && $language===$this->_defaultLanguage) {
+            if (!$this->getEnableDefaultLanguageUrlCode() && $language===$this->_defaultLanguage) {
                 $this->redirectToLanguage('');
             }
         } else {
@@ -343,7 +389,7 @@ class UrlManager extends BaseUrlManager
                 }
             }
             if ($language===null || $language===$this->_defaultLanguage) {
-                if (!$this->enableDefaultLanguageUrlCode) {
+                if (!$this->enableDefaultLanguageUrlCodeReal) {
                     return;
                 } else {
                     $language = $this->_defaultLanguage;
@@ -419,9 +465,12 @@ class UrlManager extends BaseUrlManager
             throw new \yii\web\NotFoundHttpException(Yii::t('yii', 'Page not found.'));
         }
         list ($route, $params) = $result;
-        if($language){
+        if($language && ($this->enableDefaultLanguageUrlCodeCallBack)($route)){
             $params[$this->languageParam] = $language;
+        } else {
+            return;
         }
+
         // See Yii Issues #8291 and #9161:
         $params = $params + $this->_request->getQueryParams();
         array_unshift($params, $route);
@@ -441,4 +490,25 @@ class UrlManager extends BaseUrlManager
         }
 
     }
+
+    /**
+     * @return boolean
+     */
+    public function getEnableDefaultLanguageUrlCode ($params=null)
+    {
+        if(!is_callable($this->enableDefaultLanguageUrlCodeCallBack)){
+            return ($this->enableDefaultLanguageUrlCodeCallBack)($this->enableDefaultLanguageUrlCodeReal,$params);
+        }
+        return $this->enableDefaultLanguageUrlCodeReal;
+    }
+
+    /**
+     * @param boolean $enableDefaultLanguageUrlCode
+     */
+    public function setEnableDefaultLanguageUrlCode ($enableDefaultLanguageUrlCode)
+    {
+        $this->enableDefaultLanguageUrlCodeReal = $enableDefaultLanguageUrlCode;
+        return $this;
+    }
+
 }
